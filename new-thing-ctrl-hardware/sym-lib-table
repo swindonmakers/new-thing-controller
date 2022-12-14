@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "machine-controller-rescue")(type "Legacy")(uri "${KIPRJMOD}/new-thing-ctrl-hardware-rescue.lib")(options "")(descr ""))
+)
