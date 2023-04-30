@@ -18,9 +18,11 @@
 
 #ifdef WIFIMODE
 #include "ThingControllerWifi.h"
+ThingControllerWifi controller;
 #endif
 #ifdef WIREDMODE
 #include "ThingControllerWired.h"
+ThingControllerWired controller;
 #endif
 
 
@@ -37,8 +39,8 @@ enum statemach {
   SM_REMAINS_OPEN  //door has been left open 
   };
 
-statemach state = SM_IDLE;
-ThingController controller;
+statemach thingState = SM_IDLE;
+
 
 void setup() {
 
@@ -55,7 +57,11 @@ void setup() {
 
   controller.initLcd();
 
-
+  // for(size_t i = 0; i < UniqueIDsize; i++){
+  //   Serial.println(UniqueID[i], HEX);
+  //   int tmp = UniqueID[i];
+  //   controller.printMsgln(String(tmp), VERB_ALL);
+  // }
   // printMsgln(msg, VERB_ALL);
   controller.printMsgln("Setting up", VERB_ALL);
 
@@ -100,7 +106,7 @@ void loop() {
   //unlock door if tag is valid
   if (tag != NULL){//if something got scanned
     if (tag->flags && TOKEN_ACCESS){
-      state = SM_UNLOCK;
+      thingState = SM_UNLOCK;
       actionTimer = millis();  
       controller.colorWipe(tag->colour);
       controller.printMsgln("Unlocking by Tag", VERB_MED);
@@ -111,7 +117,7 @@ void loop() {
       //set door color
       //set door timeout
     }else{ //access denied but there was still data so got an error in response
-      state = SM_RESPONSE;
+      thingState = SM_RESPONSE;
       actionTimer = millis(); 
       controller.colorWipe(tag->colour);
       controller.printMsgln("Denied", VERB_ALL);
@@ -122,14 +128,14 @@ void loop() {
       //lock door
     }
   } else {
-    switch (state){
+    switch (thingState){
       case SM_IDLE:
         if (!digitalRead(DOOR_SENSOR)){//if door is open for no reason
-          state = SM_REMAINS_OPEN;
+          thingState = SM_REMAINS_OPEN;
           controller.colorWipe(PATTERN_PINK);
         }
         if (!digitalRead(EXIT_BUTTON)){
-          state = SM_UNLOCK;
+          thingState = SM_UNLOCK;
           controller.colorWipe(PATTERN_PINK);
           controller.printMsgln("Unlocking by Button", VERB_MED);
           actionTimer = millis();  
@@ -138,11 +144,11 @@ void loop() {
       case SM_UNLOCK:
         if(actionTimer + (controller.Unlock_Seconds*1000) < millis()){//if door has stayed open long enough
           if (!digitalRead(DOOR_SENSOR)){ //door still open
-            state = SM_REMAINS_OPEN;
+            thingState = SM_REMAINS_OPEN;
             controller.printMsgln("Door kept open", VERB_HIGH);
             controller.colorWipe(PATTERN_PINK);
           }else{ //door closed go to idle
-            state = SM_IDLE;
+            thingState = SM_IDLE;
             controller.colorWipe(PATTERN_ORANGE);
             controller.printMsgln("setting idle", VERB_HIGH);
             isUnlocked = false;
@@ -152,7 +158,7 @@ void loop() {
         break;
       case SM_RESPONSE:        
         if(actionTimer + (controller.Unlock_Seconds*1000) < millis()){//if door has stayed open long enough
-          state = SM_IDLE;
+          thingState = SM_IDLE;
           controller.colorWipe(PATTERN_ORANGE);
           controller.printMsgln("setting idle", VERB_HIGH);
           controller.lockDevice();
@@ -162,7 +168,7 @@ void loop() {
         break;
       case SM_REMAINS_OPEN:
         if (digitalRead(DOOR_SENSOR)){
-          state = SM_IDLE;
+          thingState = SM_IDLE;
           controller.colorWipe(PATTERN_ORANGE);
           controller.lockDevice();//lock door only once closed
         }

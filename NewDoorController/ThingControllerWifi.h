@@ -5,11 +5,11 @@
 #include "ThingControllerBase.h"
 
 
-class ThingController : public ThingControllerBase {
+class ThingControllerWifi : public ThingControllerBase {
 private:
   String Network_SSID = "";
   String Network_Password = "";
-
+  int wifi_error_count = 0;
 
 public:
   int configureDevice() {
@@ -100,7 +100,7 @@ public:
     }
 
     WiFiClient client;
-    printMsgln("connect to server", VERB_LOW);
+    printMsgln("Messaging server", VERB_HIGH);
     if (!client.connect(Server_Host, Server_Port)) {
       printMsgln("Error: Connection failed", VERB_LOW);
       return;
@@ -125,10 +125,12 @@ public:
 
   void setupNetwork() {
     printMsgln("Connecting to Wifi", VERB_ALL);
+    WiFi.disconnect(true);
     WiFi.mode(WIFI_STA);
     WiFi.begin(Network_SSID.c_str(), Network_Password.c_str());
     WiFi.config(ip);
     // Print periods on monitor while establishing connection
+    rp2040.wdt_reset();
     while (WiFi.status() != WL_CONNECTED) {
       printMsg(".", VERB_ALL);
       delay(1000);
@@ -149,23 +151,43 @@ TOKEN_CACHE_ITEM* queryServer(const uint8_t *uid, uint8_t uidLength){
   memcpy(serverResult.token, uid, uidLength);
   serverResult.length = uidLength;
   serverResult.sync = 0;
-  printMsgln("Check wifi", VERB_LOW);
+  printMsgln("Check wifi", VERB_HIGH);
   if ( WiFi.status() != WL_CONNECTED ) {
+    char countMsg[20] = "";
     printMsgln("Error: WiFi Not Connected", VERB_ALL);
     serverResult.colour = PATTERN_WHITE;
+    wifi_error_count++;
+    sprintf(countMsg, "Wifi error Count: %d",wifi_error_count );
+    printMsgln(String(countMsg), VERB_MED);
+    setupNetwork();
+    if (wifi_error_count > 4){
+      while (1){ //if failed to connect 3 times use watchdog to reset
+        delay(100);
+      }
+    }
     return &serverResult;
   }  
   // Use WiFiClient class to create TCP connections
   WiFiClient client;
   printMsgln("Check server", VERB_LOW);
-   if (!client.connect(Server_Host, Server_Port)) {
-     printMsgln("Error: Connection failed", VERB_ALL);
+    if (!client.connect(Server_Host, Server_Port)) {
+    char countMsg[20] = "";
+    printMsgln("Error: Connection failed", VERB_ALL);
     serverResult.colour = PATTERN_WHITE;
     client.flush();
     client.stop();  
+    wifi_error_count++;
+    sprintf(countMsg, "Wifi error Count: %d",wifi_error_count );
+    printMsgln(String(countMsg), VERB_MED);
+    setupNetwork();
+    if (wifi_error_count > 4){
+      while (1){ //if failed to connect 3 times use watchdog to reset
+        delay(100);
+      }
+    }
     return &serverResult;
    }
-   
+   wifi_error_count = 0;
   printMsgln("Sending Msg to server", VERB_HIGH);
   // We now create a URI for the request
   String url = Server_URLPrefix;
