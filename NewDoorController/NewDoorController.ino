@@ -6,8 +6,8 @@
 #define ThingControllerBoardRev 1
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
-#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE
-//#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE
+#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
+//#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE - BOARD SELECTION MUST BE Pi PICO or WIZnet W5500-EVB-Pico
 
 
 //local files
@@ -16,15 +16,16 @@
 #include "builtinBadges.h"
 #endif
 
-#ifdef WIFIMODE
-#include "ThingControllerWifi.h"
-ThingControllerWifi controller;
-#endif
-#ifdef WIREDMODE
-#include "ThingControllerWired.h"
-ThingControllerWired controller;
-#endif
-
+// #ifdef WIFIMODE
+// #include "ThingControllerWifi.h"
+// ThingControllerWifi controller;
+// #endif
+// #ifdef WIREDMODE
+// #include "ThingControllerWired.h"
+// ThingControllerWired controller;
+// #endif
+#include "ThingControllerBase.h"
+ThingControllerBase controller;
 
 //Door connection defines
 #define EXIT_BUTTON 12  //INPUT digital GPIO expansion connector pin
@@ -66,7 +67,7 @@ void setup() {
   controller.printMsgln("Setting up", VERB_ALL);
 
   //start up little fs to get the config file
-  controller.configureDevice();
+  controller.configDevice();
 
   delay(1000);  //delay so can be read
 
@@ -138,6 +139,7 @@ void loop() {
           thingState = SM_UNLOCK;
           controller.colorWipe(PATTERN_PINK);
           controller.printMsgln("Unlocking by Button", VERB_MED);
+          controller.unlockDevice();
           actionTimer = millis();  
         }
         break;

@@ -24,10 +24,10 @@
 
 #if ThingControllerBoardRev == 1
 #define I2C_IRQ 14
-#define RFID_RESET 17  //not connected
+#define RFID_RESET 15  //not connected
 #else
 #define I2C_IRQ 14     //Might change in rev 2 of board placeholder if this happens
-#define RFID_RESET 17  //not connected
+#define RFID_RESET 15  //not connected
 #endif
 
 //default imports
@@ -40,7 +40,14 @@
 #include <Wire.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
+//WIFI/WIRED specific tools
+#ifdef WIFIMODE
 
+#endif
+#ifdef WIREDMODE
+  #include <Ethernet_Generic.h>
+  #include <ArduinoUniqueID.h>
+#endif
 
 #define CARD_DEBOUNCE_DELAY 2000  // milliseconds between successful card reads
 #define PN532_READ_TIMEOUT 50     // milliseconds
@@ -80,6 +87,7 @@
 #define PATTERN_REDGREEN 35
 #define PATTERN_REDPURPLE 36
 #define PATTERN_REDPINK 37
+#define PATTERN_REDWHITE 38
 
 
 long actionTimer;
@@ -108,6 +116,8 @@ String lcdMsg[LCD_NUM_LINES];
 bool newline = false;
 bool isUnlocked = false;
 bool deviceOn = false;
+
+
 
 // tokens are 4 or 7-byte values, held in a fixed 7-byte array
 typedef uint8_t TOKEN[7];
@@ -139,9 +149,12 @@ inline int clamp(int v, int minV, int maxV) {
 
 
 
+
+
 class ThingControllerBase {
-private:
 public:
+  int thingPin = 7;  //default output pin
+  int thingOnState = HIGH;
   // the cache
   // number of items in cache
   uint8_t cacheSize = 0;
@@ -149,23 +162,28 @@ public:
   TOKEN_CACHE_ITEM serverResult;
 
 
-  int thingPin = 7;//default output pin
-  int thingOnState = HIGH; 
+
   // token as hex string
-  char tokenStr[15];         ///14 + string terminator
-  uint8_t colorPattern = 0;  //current pattern its displaying
-  IPAddress ip{IPAddress(192, 168, 1, 252)};  //default, gets set later
+  char tokenStr[15];                            ///14 + string terminator
+  uint8_t colorPattern = 0;                     //current pattern its displaying
+  IPAddress ip{ IPAddress(192, 168, 1, 252) };  //default, gets set later
   String Server_Host = "";
   int Server_Port = 0;
   String Server_URLPrefix = "";
   String Thing_ID = "";
   String Thing_Name = "";
   int Unlock_Seconds = 5;  //time staying unlocked
+  int wifi_error_count = 0;
+  #ifdef WIFIMODE
+    //Wifi specific IDs
+    String Network_SSID = "";
+    String Network_Password = "";
+    
+  #endif
+  byte macAddr[6] = { 0, 0, 0, 0, 0, 0 }; //Wired only? gets set later
+  
 
-  virtual TOKEN_CACHE_ITEM* queryServer(const uint8_t* uid, uint8_t uidLength) {
-    printMsgln("ERROR: queryServer EMPTY", VERB_ALL);
-    return NULL;
-  };
+
   void initLcd() {
     lcd.begin();
     lcd.setRotation(3);                 //set screen to right way around
@@ -177,17 +195,104 @@ public:
     lcd.setTextSize(2);
   }
 
-  void unlockDevice(){
+  void unlockDevice() {
     digitalWrite(thingPin, thingOnState);
     printMsgln("Device unlocked", VERB_HIGH);
   }
-  
-  void lockDevice(){
+
+  void lockDevice() {
     digitalWrite(thingPin, !thingOnState);
     printMsgln("Device locked", VERB_HIGH);
   }
 
-  int congigDevice() {
+  int configNetwork(){
+     printMsgln("Reading config", VERB_ALL);
+    if (!LittleFS.begin()) {
+      printMsgln("Error mounting LittleFS", VERB_ALL);
+      return 0;
+    }
+    //Configure Network
+
+    //read wifi configuration from Network.json
+    File networkFile = LittleFS.open("/Network.json", "r");
+    if (!networkFile) {
+      printMsgln("Failed to open network file", VERB_ALL);
+      return 0;
+    }
+    StaticJsonDocument<512> doc;
+    DeserializationError error = deserializeJson(doc, networkFile);
+    if (error) {
+      printMsgln("Failed to parse network file", VERB_ALL);
+      return 0;
+    }
+    //convert to json
+    JsonObject root = doc.as<JsonObject>();
+    networkFile.close();  //close little fs file
+
+    //read in Network settings   
+    
+    #ifdef WIFIMODE
+      //Network SSID (Wifi name)
+      if (!root.containsKey("NETWORK_SSID")) {
+        printMsgln("Error: No NETWORK_SSID in Network file", VERB_ALL);
+        return 0;
+      }
+      this->Network_SSID = root["NETWORK_SSID"].as<String>();
+
+      //Network password
+      if (!root.containsKey("NETWORK_PASSWORD")) {
+        printMsgln("Error: No NETWORK_PASSWORD in Network file", VERB_ALL);
+        return 0;
+      }
+      this->Network_Password = root["NETWORK_PASSWORD"].as<String>();
+    #endif
+    #ifdef WIREDMODE
+      printMsgln("Mac Address:", VERB_LOW);
+      for (size_t i = 0; i < 6; i++) {
+        char hexes[3] = "";
+        macAddr[i] = UniqueID[i];
+        sprintf(hexes, "%02X:", UniqueID[i]);
+        printMsg(String(hexes), VERB_LOW);
+      }
+    #endif
+    
+    //settings across wifi and wired
+    //IP address that this device should appear as
+    if (!root.containsKey("DeviceAddress")) {
+      printMsgln("Error: No DeviceAddress in config file", VERB_ALL);
+      return 0;
+    }
+    const char* ipaddress = root["DeviceAddress"];
+    this->ip.fromString(ipaddress);
+    //IP address of server to connect to
+    if (!root.containsKey("SERVER_HOST")) {
+      printMsgln("Error: No SERVER_HOST in Network file", VERB_ALL);
+      return 0;
+    }
+    Server_Host = root["SERVER_HOST"].as<String>();
+
+    //port of server
+    if (!root.containsKey("SERVER_PORT")) {
+      printMsgln("Error: No SERVER_PORT in Network file", VERB_ALL);
+      return 0;
+    }
+    this->Server_Port = root["SERVER_PORT"].as<int>();
+
+    //Prefix of URL to ping server
+    if (!root.containsKey("SERVER_URLPREFIX")) {
+      printMsgln("Error: No SERVER_URLPREFIX in Network file", VERB_ALL);
+      return 0;
+    }
+    this->Server_URLPrefix = root["SERVER_URLPREFIX"].as<String>();
+    
+    printMsgln("Device Configured", VERB_ALL);
+    printMsg(Thing_Name, VERB_ALL);
+    printMsg(" Controller", VERB_ALL);
+    return 1;
+    
+  }
+
+  int configDevice() {
     //read device configuration from Config.json
     //start up little fs to get the config file
     if (!LittleFS.begin()) {
@@ -228,29 +333,29 @@ public:
       return 0;
     }
     this->Unlock_Seconds = root["UnlockSeconds"].as<int>();
-    
+
     //get output pin from json file
     if (!root.containsKey("ThingPin")) {
       printMsgln("Error: No ThingPin in config file", VERB_ALL);
       return 0;
     }
     this->thingPin = root["ThingPin"].as<int>();
-    
+
     //get output pin from json file
     if (!root.containsKey("ThingOnState")) {
       printMsgln("Error: No ThingOnState in config file", VERB_ALL);
       return 0;
     }
     this->thingOnState = root["ThingOnState"].as<int>();
-    
+
     pinMode(thingPin, OUTPUT);
     lockDevice();
-    
+    configNetwork();
     return 1;  //return 1 if passed, 0 if failed
   }
 
 
-  
+
   //function to display msg on both Serial (usb debug), and ILI9341 LCD display
   //print msg on new line
   void printMsgln(String newMsg = "", uint8_t verb = 2) {
@@ -422,9 +527,6 @@ public:
     }
     tokenStr[14] = '\0';  //string terminator
   }
-
-  // send a log msg to the server, fire and forget
-  virtual void sendLogMsg(String msg){};
 
 
   TOKEN_CACHE_ITEM* lookForCard() {
@@ -623,6 +725,12 @@ public:
           return (COLOR_RED);
         else
           return (COLOR_PINK);
+	  case PATTERN_REDWHITE:
+		if (pos < NUM_LEDS / 2)
+          return (COLOR_RED);
+        else
+          return (COLOR_WHITE);
+	  
       default:  //invalid color code
         if (pos < NUM_LEDS / 2)
           return (COLOR_RED);
@@ -684,21 +792,255 @@ public:
     delay(1000);
     image.close();
   }
-  
+
   void changeVerbosity() {  //on button press cycle through verbosity levels
-  String verbmsg = "Verbosity set to ";
-  if (verbosity == 2) {  //verbosity is at highest cycle to low (0)
-    verbosity = 0;
-  } else {
-    verbosity++;
-  }
-  switch (verbosity) {
-    case 0: verbmsg += "LOW"; break;
-    case 1: verbmsg += "MEDIUM"; break;
-    case 2: verbmsg += "HIGH"; break;
-  }
+    String verbmsg = "Verbosity set to ";
+    if (verbosity == 2) {  //verbosity is at highest cycle to low (0)
+      verbosity = 0;
+    } else {
+      verbosity++;
+    }
+    switch (verbosity) {
+      case 0: verbmsg += "LOW"; break;
+      case 1: verbmsg += "MEDIUM"; break;
+      case 2: verbmsg += "HIGH"; break;
+    }
 
-  printMsgln(verbmsg, VERB_ALL);  //print new verbosity level
+    printMsgln(verbmsg, VERB_ALL);  //print new verbosity level
   }
+  
+  // send a log msg to the server, fire and forget
+  void sendLogMsg(String msg) {//msg to server
+    msg.replace(" ", "%20"); //msg cannot have spaces in it or any other character that might mess up URL
+      
+    #ifdef WIFIMODE
+      if (WiFi.status() != WL_CONNECTED) {
+        printMsgln("Error: WiFi Not Connected", VERB_LOW);
+        return;
+      }    
+      WiFiClient client;
+    #endif
+    #ifdef WIREDMODE
+      if (!(Ethernet.linkStatus() == LinkON)) {
+        printMsgln("ETHERNET NOT CONNECTED", VERB_ALL);
+        return;
+      }    
+      EthernetClient client;
+    #endif
+    
+    printMsgln("Messaging server", VERB_HIGH);
+    if (!client.connect(Server_Host.c_str(), Server_Port)) {
+      printMsgln("Error: Connection failed", VERB_LOW);
+      return;
+    }    
+    String url = Server_URLPrefix;
+    url += "msglog?thing=";
+    url += Thing_ID.c_str();
+    url += "&msg=";
+    url += msg;
 
+    //printMsgLarge(url, VERB_LOW);
+
+    // This will send the request to the server
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + Server_Host.c_str() + "\r\n" + "Connection: close\r\n\r\n");
+
+    // don't care if it succeeds, so close connection and return
+    client.flush();
+    client.stop();
+    return;        
+    
+    
+  }
+  
+  
+  void setupNetwork() {
+    #ifdef WIFIMODE
+      printMsgln("Connecting to Wifi", VERB_ALL);
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(Network_SSID.c_str(), Network_Password.c_str());
+      WiFi.config(ip);
+      // Print periods on monitor while establishing connection
+      rp2040.wdt_reset();
+      while (WiFi.status() != WL_CONNECTED) {
+        printMsg(".", VERB_ALL);
+        delay(1000);
+      }
+
+      // Connection established
+      printMsgln("Wifi Connected", VERB_ALL);
+      printMsgln(WiFi.SSID(), VERB_ALL);    
+    #endif
+    #ifdef WIREDMODE
+	  printMsgln("Enabling Ethernet", VERB_ALL);
+      Ethernet.init(17);
+      Ethernet.begin(macAddr, ip);    
+    #endif
+  }
+  
+  TOKEN_CACHE_ITEM* queryServer(const uint8_t* uid, uint8_t uidLength) {
+    //clear results from pervious query
+    serverResult.flags = 0;
+    serverResult.colour = PATTERN_RED;
+    serverResult.count = 0;
+	
+	memset(serverResult.token, 0, sizeof(serverResult.token)); //clear all of token
+    memcpy(serverResult.token, uid, uidLength);
+    serverResult.length = uidLength;
+    serverResult.sync = 0;
+	
+	
+	#ifdef WIFIMODE
+	if ( WiFi.status() != WL_CONNECTED ) {
+      char countMsg[20] = "";
+      printMsgln("Error: WiFi Not Connected", VERB_ALL);
+      serverResult.colour = PATTERN_WHITE;
+      wifi_error_count++;
+      sprintf(countMsg, "Wifi error Count: %d",wifi_error_count );
+      printMsgln(String(countMsg), VERB_MED);
+      setupNetwork();
+      if (wifi_error_count > 4){
+        while (1){ //if failed to connect 3 times use watchdog to reset
+          delay(100);
+        }
+      }
+      return &serverResult;
+    } 
+	// Use WiFiClient class to create TCP connections
+	WiFiClient client;
+	#endif
+
+	#ifdef WIREDMODE
+    printMsgln("Check Ethernet", VERB_HIGH);
+    if (!(Ethernet.linkStatus() == LinkON)) {
+      printMsgln("ETHERNET NOT CONNECTED", VERB_ALL);
+      serverResult.colour = PATTERN_REDWHITE;
+      return &serverResult;
+    }
+	EthernetClient client;
+	printMsgln("Check server", VERB_LOW);
+    if (!client.connect(Server_Host.c_str(), Server_Port)) {
+      printMsgln("Error: Connection failed", VERB_ALL);
+      serverResult.colour = PATTERN_REDWHITE;
+      client.flush();
+      client.stop();
+      return &serverResult;
+    }
+	#endif
+
+    #ifdef WIREDMODE
+    if (!client.connect(Server_Host.c_str(), Server_Port)) {
+    #endif	
+    #ifdef WIFIMODE	
+    if (!client.connect(Server_Host, Server_Port)) {
+    #endif
+      char countMsg[20] = "";
+      printMsgln("Error: Connection failed", VERB_ALL);
+      serverResult.colour = PATTERN_WHITE;
+      client.flush();
+      client.stop();  
+      wifi_error_count++;
+      sprintf(countMsg, "Wifi error Count: %d",wifi_error_count );
+      printMsgln(String(countMsg), VERB_MED);
+      setupNetwork();
+      if (wifi_error_count > 4){
+        while (1){ //if failed to connect 3 times use watchdog to reset
+          delay(100);
+        }
+      }
+    return &serverResult;
+    }
+    wifi_error_count = 0;
+
+	//rest of code is independant of wifi and wired mode
+    printMsgln("Sending Msg to server", VERB_HIGH);
+    // We now create a URI for the request
+    String url = Server_URLPrefix;
+    url += "verify";
+    url += "?token=";
+    url += tokenStr;
+    url += "&thing=";
+    url += Thing_ID.c_str();    
+    //printMsgln(url, VERB_ALL);
+
+    int server_response_time =0;
+    server_response_time = millis();
+    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+                  "Host: " + Server_Host.c_str() + "\r\n" +
+                  "Connection: close\r\n\r\n");  
+    int checkCounter = 0;
+
+    while (!client.available()) {
+      delay(10);
+      checkCounter++;
+      if (checkCounter > 3000){
+        printMsgln ("Server Did not Respond", VERB_LOW); 
+        serverResult.colour = PATTERN_REDWHITE;
+        return &serverResult;
+      }
+    }   
+    //printMsgln ("Server Responded", VERB_MED); 
+    printMsg ("Response time ms: ", VERB_HIGH); 
+    printMsgln(String(millis() - server_response_time), VERB_HIGH);  
+    String json;
+    int loop_counter = 0;
+    bool endOfHeaders = false;
+    while(client.available() && (loop_counter < 512) && !endOfHeaders){
+      loop_counter++;    
+      json = client.readStringUntil('\n');
+      if (json == "") endOfHeaders = true;    
+      if (json.length() >=500) break; //way too much text
+        //printMsgLarge(json, VERB_HIGH);
+    
+    }
+    //clean up and close connection 
+    client.flush();
+    client.stop();  
+
+    //printMsgLarge(json, VERB_HIGH);
+
+    //convert to json
+    DynamicJsonDocument jsonBuffer(200);
+    deserializeJson(jsonBuffer,json);
+    JsonObject root = jsonBuffer.as<JsonObject>();
+    if (root.isNull()) {
+      printMsgln("Error: Couldn't parse JSON", VERB_LOW);
+	  serverResult.colour = PATTERN_REDWHITE;
+      return &serverResult;
+    }
+    if (!root.containsKey("access")) {
+      printMsgln("Error: No access info");
+      //TODO add error color
+      return &serverResult;
+    }else{
+      if (root["access"] == 1) { //if access allowed
+        serverResult.flags |= TOKEN_ACCESS;
+      } 
+    }
+    if (root.containsKey("cache")){
+      if (root["cache"] == 1) { //dont  cache if weekend member
+        serverResult.flags |= TOKEN_CACHE; 
+        serverResult.sync = CACHE_SYNC;//setup how long staying in cache before checking again  
+      }
+    }
+    if (root.containsKey("inductor")){
+      if (root["inductor"] == 1) { //check if an inductor
+        serverResult.flags |= TOKEN_INDUCTOR; //or assign
+      }
+    } 
+    if (root.containsKey("director")){
+      if (root["director"] == 1) { //TBD director do anything special?
+        serverResult.flags |= TOKEN_DIRECTOR;
+      }
+    } 
+    if (root.containsKey("colour")){
+      serverResult.colour  = root["colour"].as<int>(); //value between 0-63
+    } 
+    if (root.containsKey("error")){//print out error messages
+      printMsgLarge(root["error"], VERB_MED);
+    }   
+  
+    return &serverResult;
+  }  
+  
 };

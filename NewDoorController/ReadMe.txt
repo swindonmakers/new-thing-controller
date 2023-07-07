@@ -2,6 +2,22 @@ GUIDE TO NEW DOOR CONTROLLER
 
 NOTE CURRENTLY REQURIES Adafruit PN532 library to be on version 1.2.3 (1.3.0 doesnt work for some reason and cant tell why right now)
 
+DOOR COLOUR CODES REFERENCE
+Normal colours
+YELLOW - Idle waiting for tag, door is locked
+RED - Tag not recognised as anyone
+PINK - Door open or unlocked by exit button
+GREEN - Access granted to member
+
+
+HALF RED/YELLOW - Member found but hasnt paid
+HALF RED/BLUE - Weekend member trying to access on week day
+WHITE - Network Issue - attempt multple times reset device and it might regain connection after reset
+HALF RED/PURPLE - Member doesnt have permission (shouldnt happen on door but may on tools)
+HALF RED/PINK - Tag is associated to more than 1 account - please talk to directors as there is a mistake in database
+HALF RED/GREEN - Unknown error - please let directors know as this shouldnt happen (if repeatable please take video of what how its caused)
+
+
 
 PINOUT
 NFC reader IRQ Pin to Pin 17 (defined in code)
