@@ -24,3 +24,11 @@ fp-info-cache
 # Exported BOM files
 *.xml
 *.csv
+DoorController/override_tokens.h
+DoorController/%appdata%/build.options.json
+DoorController/%appdata%/compile_commands.json
+DoorController/%appdata%/sketch/%appdata%/build.options.json
+DoorController/%appdata%/sketch/DoorController.ino.cpp
+DoorController/.vscode/arduino.json
+DoorController/.vscode/c_cpp_properties.json
+DoorController/.vscode/settings.json

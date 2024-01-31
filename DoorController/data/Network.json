@@ -1,0 +1,8 @@
+{
+  "NETWORK_SSID": "swindon-makerspace",
+  "NETWORK_PASSWORD": "makeallthethings",
+  "SERVER_HOST": "82.71.33.178",
+  "SERVER_PORT": 80,
+  "SERVER_URLPREFIX": "/accesssystem/",
+  "DeviceAddress": "192.168.1.200"
+}
