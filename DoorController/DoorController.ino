@@ -12,11 +12,12 @@
     #include "override_tokens.h"
 #endif 
 //Door IO defines
-#define EXIT_BUTTON 12  //INPUT digital GPIO expansion connector pin
-#define DOOR_SENSOR 13  //INPUT digital GPIO expansion connector pin
+#define EXIT_BUTTON 13  //INPUT digital GPIO expansion connector pin
+#define DOOR_SENSOR 10  //INPUT digital GPIO expansion connector pin
 
 long actionTimer = 0; //time between actions to automate actions in statemachine
 long cacheTimer = 0;  //time counter between checking cache (hourly)
+long i2c_checker = 0; //I2C appears to crash every so often - check every minute and if fails reset server
 
 
 enum statemach {
@@ -107,7 +108,7 @@ void loop(){
 
     switch (thingState){
         case SM_IDLE:
-            if (!digitalRead(DOOR_SENSOR)){//if door is open for no reason
+            if (digitalRead(DOOR_SENSOR)){//if door is open for no reason
                 gotoSM_REMAINS_OPEN();
             }
             if (!digitalRead(EXIT_BUTTON)){//if someone wants to leave
@@ -118,7 +119,7 @@ void loop(){
             break;
         case SM_UNLOCK:
             if(actionTimer + (Unlock_Seconds*1000) < millis()){//if door has stayed open long enough
-                if (!digitalRead(DOOR_SENSOR)){ //door still open
+                if (digitalRead(DOOR_SENSOR)){ //door still open
                     gotoSM_REMAINS_OPEN();
                 }else{ //door closed go to idle
                     gotoSM_IDLE();
@@ -131,7 +132,7 @@ void loop(){
             }  
             break;                  
         case SM_REMAINS_OPEN:
-            if (digitalRead(DOOR_SENSOR)){
+            if (!digitalRead(DOOR_SENSOR)){
                 gotoSM_IDLE();
             }
             break;
@@ -144,6 +145,26 @@ void loop(){
         updateStoredAccounts();
         cacheTimer = millis();
     }
+
+    if (millis() > (i2c_checker) + 61000){
+        printBody("checking i2c bus");
+        uint32_t versiondata = nfc.getFirmwareVersion();
+        if (versiondata == 0)
+        {
+            printBody("FAILED TO REACH NFC");
+            printTitle("ERROR!");
+            printBody("reseting in a few seconds");
+            sendServerLogMsg("Oh No, the RFID tag reader isnt responding, reseting in a moment to see if that helps");
+            while(1){
+                delay(1000);
+            }
+        }
+        i2c_checker = millis();
+        actionTimer = millis();
+    }
+
+
+
     animate_leds();//animate the spiral effect
 
  

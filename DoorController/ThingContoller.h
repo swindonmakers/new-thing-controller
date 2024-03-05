@@ -293,13 +293,13 @@ int configNetwork()
     Network_Password = root["NETWORK_PASSWORD"].as<String>();
 #endif
 #ifdef WIREDMODE
-    printBody("Mac Address:", VERB_LOW);
+    printBody("Mac Address:");
     for (size_t i = 0; i < 6; i++)
     {
         char hexes[3] = "";
         macAddr[i] = UniqueID[i];
         sprintf(hexes, "%02X:", UniqueID[i]);
-        printMsg(String(hexes), VERB_LOW);
+        printBody(String(hexes));
     }
 #endif
 
