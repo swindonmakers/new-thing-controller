@@ -146,22 +146,22 @@ void loop(){
         cacheTimer = millis();
     }
 
-    if (millis() > (i2c_checker) + 61000){
-        printBody("checking i2c bus");
-        uint32_t versiondata = nfc.getFirmwareVersion();
-        if (versiondata == 0)
-        {
-            printBody("FAILED TO REACH NFC");
-            printTitle("ERROR!");
-            printBody("reseting in a few seconds");
-            sendServerLogMsg("Oh No, the RFID tag reader isnt responding, reseting in a moment to see if that helps");
-            while(1){
-                delay(1000);
-            }
-        }
-        i2c_checker = millis();
-        actionTimer = millis();
-    }
+    // if (millis() > (i2c_checker) + 61000){
+    //     printBody("checking i2c bus");
+    //     uint32_t versiondata = nfc.getFirmwareVersion();
+    //     if (versiondata == 0)
+    //     {
+    //         printBody("FAILED TO REACH NFC");
+    //         printTitle("ERROR!");
+    //         printBody("reseting in a few seconds");
+    //         sendServerLogMsg("Oh No, the RFID tag reader isnt responding, reseting in a moment to see if that helps");
+    //         while(1){
+    //             delay(1000);
+    //         }
+    //     }
+    //     i2c_checker = millis();
+    //     actionTimer = millis();
+    // }
 
 
 

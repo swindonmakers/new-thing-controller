@@ -35,6 +35,7 @@ LiquidCrystal_I2C Textlcd = LiquidCrystal_I2C(i2cAddr, 20, 4); // Change to (0x2
 #define TFTLCD_BACKLIGHT 3
 #define I2C_IRQ 14    // Might change in rev 2 of board placeholder if this happens
 #define RFID_RESET 15 // not connected but needed in code
+#define ETHERNET_RESET 20
 
 // NFC reader control properties
 #define CARD_DEBOUNCE_DELAY 2000 // milliseconds between successful card reads
@@ -294,13 +295,16 @@ int configNetwork()
 #endif
 #ifdef WIREDMODE
     printBody("Mac Address:");
+    String mac_addr_comb = "";
     for (size_t i = 0; i < 6; i++)
     {
         char hexes[3] = "";
         macAddr[i] = UniqueID[i];
         sprintf(hexes, "%02X:", UniqueID[i]);
-        printBody(String(hexes));
+        mac_addr_comb += String(hexes);
+        // printBody(String(hexes));
     }
+    printBody(mac_addr_comb);
 #endif
 
     // settings across wifi and wired
@@ -600,7 +604,12 @@ void setupNetwork()
     printBody("Wifi Connected");
 #endif
 #ifdef WIREDMODE
-    printBody("Enabling Ethernet");
+    delay(250);
+    printBody("Reseting Ethernet");
+    Ethernet.setRstPin(ETHERNET_RESET);
+    Ethernet.hardreset();
+    delay(250);
+    printBody("Initialising Ethernet");
     Ethernet.init(17);
     Ethernet.begin(macAddr, ip);
 #endif
@@ -789,6 +798,12 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
     {
         printBody("ETHERNET NOT CONNECTED");
         account->colour = PATTERN_WHITE;
+        wifi_error_count++;
+        if (wifi_error_count > 4){
+            while (1){ // if failed to connect 3 times use watchdog to reset
+                delay(100);
+            }
+        }
         return;
     }
     EthernetClient client;
