@@ -1,0 +1,8 @@
+{
+  "NETWORK_SSID": "SSID",
+  "NETWORK_PASSWORD": "pwd",
+  "SERVER_HOST": "1.1.1.1",
+  "SERVER_PORT": 1,
+  "SERVER_URLPREFIX": "/",
+  "DeviceAddress": "1.1.1.1"
+}

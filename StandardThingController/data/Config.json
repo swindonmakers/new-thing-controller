@@ -1,0 +1,9 @@
+{
+  "Thing_Name": "TOOLNAME",
+  "UUID": "PUTUUIDHERE",
+  "ThingControllerBoardRev" : 1,
+  "UnlockSeconds" : 8,
+  "ThingPin" : 7,
+  "ThingOnState" : 1,
+  "NumRGBleds" : 24
+}
