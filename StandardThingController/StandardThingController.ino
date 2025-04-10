@@ -1,5 +1,7 @@
 //SWINDON MAKERSPACE THING CONTROLLER
 // DOOR V0.1
+#define SOFTWARE_VER "1.1"
+#define SOFTWARE_TYPE "Standard"
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
 #define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
@@ -13,6 +15,7 @@
 #define ACTIVATE_LED 22
 #define SIGNOUT_LED 17
 #define INDUCT_LED 15
+#define SCREEN_ROTATION 1
 
 #include "ThingContoller.h"
 #ifdef OVERRIDE_TOKENS
@@ -24,18 +27,22 @@ long logout_timer = 0;
 long tool_on_timer = 0; //start time value of when device is turned on 
 long continued_on_timer = 0; //helps track time intervals to see if device is still on
 int  idle_timeout = 0;
+long debug_timer = 0; //count how long the debug button has been pressed for
+bool debug_btn_state = false;
 
 enum statemach {
     SM_SIGNED_OUT,        //waiting for someone swiping to sign in
     SM_SIGNED_IN,         //unlocked but machine not turned on yet
     SM_THING_ACTIVE,      //machine active
-    SM_INDUCTING           //inductor has signed in and inducting someone
+    SM_INDUCTING,         //inductor has signed in and inducting someone
+    SM_OTA_DEBUG          //Hidden menu, enter to see debug info + enable OTA mode
 };
 
 void gotoSM_SIGNED_OUT();
 void gotoSM_SIGNED_IN();
 void gotoSM_THING_ACTIVE();
 void gotoSM_INDUCTING();
+void gotoSM_OTA_DEBUG();
 
 SM_ACCOUNT account;
 statemach thingState = SM_SIGNED_OUT;
@@ -61,7 +68,6 @@ void setup() {
 }
 
 void loop() {
-  
   rp2040.wdt_reset(); //reset watchdog
   RFID_TAG tag;
   switch (thingState){
@@ -84,7 +90,7 @@ void loop() {
         if (account.flags & TOKEN_ACCESS)
         {
           gotoSM_SIGNED_IN();
-          printBody("Welcome");
+          printBody_update("Welcome",false);
           printBody(account.Name);
           sendServerLogMsg("Access Granted to :" + String(account.Name) , + "to " + Thing_Name);
         }
@@ -93,7 +99,20 @@ void loop() {
         colourPattern = PATTERN_ORANGE;
       };
 
-      break;
+      //debug mode check
+      if(!digitalRead(INDUCT_BUTTON)){
+        if(debug_btn_state == false){
+          debug_btn_state = true;
+          debug_timer = millis();
+        }else{
+          if(debug_timer + 5000 < millis()){
+            gotoSM_OTA_DEBUG();
+          }
+        }
+      }
+
+      break;//SM_SIGNED_OUT
+      
     case SM_SIGNED_IN:
       if (!digitalRead(SIGNOUT_BUTTON)){
         gotoSM_SIGNED_OUT();
@@ -139,7 +158,7 @@ void loop() {
             break;
         }        
       }
-      break;
+      break; //SM_SIGNED_IN
 
     case SM_THING_ACTIVE:
       if (!digitalRead(ACTIVATE_BUTTON)){
@@ -172,7 +191,20 @@ void loop() {
         sendServerInduction(uid2String(account.tag.uid, account.tag.uid_length), uid2String(tag.uid, tag.uid_length));
         printBody("tag inducted");
       }
-      break;
+      break;//SM_THING_ACTIVE
+
+    case SM_OTA_DEBUG:
+      ArduinoOTA.handle(); //check for OTA updates
+      if(!digitalRead(INDUCT_BUTTON)){
+        if(debug_btn_state == false){
+           gotoSM_SIGNED_OUT();
+        }
+      }else{
+        debug_btn_state = false;
+      }
+      delay(10);
+      actionTimer = millis(); //dont clear the screen in this state
+      break;//SM_OTA_DEBUG
 
   }
 
@@ -199,7 +231,7 @@ void gotoSM_SIGNED_OUT(){
   thingState = SM_SIGNED_OUT;
   colourPattern = PATTERN_ORANGE;
   lockDevice("Tool Off",ILI9341_RED);
-  printHeadline("Scan a Tag");
+  printHeadline_update("Scan a Tag", false);
   printBody("Signed out");
   actionTimer = millis(); 
   tool_on_timer = 0;
@@ -207,6 +239,7 @@ void gotoSM_SIGNED_OUT(){
   digitalWrite(ACTIVATE_LED, 0);
   digitalWrite(SIGNOUT_LED, 0);
   digitalWrite(INDUCT_LED, 0);
+  ArduinoOTA.end();
   
 }
 
@@ -221,7 +254,7 @@ void gotoSM_SIGNED_IN(){
   idle_timeout = 15; //15 min time out
   if (tool_on_timer != 0){
     long active_time = millis() - tool_on_timer;
-    printBody("Device was on for ");
+    printBody_update("Device was on for ", false);
     printBody(String(active_time/1000) + " Seconds");
     sendServerUptimer(uid2String(account.tag.uid, account.tag.uid_length), "0", Thing_Name + " turned off by " + account.Name, String(active_time/1000));
   }
@@ -263,4 +296,34 @@ void gotoSM_INDUCTING(){
   digitalWrite(ACTIVATE_LED, 0);
   digitalWrite(SIGNOUT_LED, 1);
   digitalWrite(INDUCT_LED, 1);
+}
+
+void gotoSM_OTA_DEBUG(){
+  thingState = SM_OTA_DEBUG;
+  lockDevice("Tool Off",ILI9341_PINK);  
+  for (int i = 0; i < LCD_NUM_LINES; i++)  {
+      bodyMsg[i] = "";
+  }
+  printTitle_update("DEBUG", false);
+  printHeadline_update("OTA ENABLED", false);
+  printBody_update(Thing_Name, false); 
+  #ifdef WIFIMODE
+    printBody("WIFI: " + Network_SSID);
+    if (WiFi.status() != WL_CONNECTED) 
+      printBody_update("Disconnected", false); 
+    else 
+      printBody_update("Connected", false); 
+  #endif
+  #ifdef WIREDMODE
+    printBody("ETHERNET " + Network_SSID);
+    if (!(Ethernet.linkStatus() == LinkON))
+      printBody_update("Disconnected", false); 
+    else 
+      printBody_update("Connected", false); 
+  #endif
+  printBody_update("SW = " +String(SOFTWARE_TYPE) + " V" + String(SOFTWARE_VER), true);
+  setupOTA();  
+  digitalWrite(INDUCT_LED, 1);
+
+  
 }

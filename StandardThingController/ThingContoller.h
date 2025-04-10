@@ -11,6 +11,7 @@
 #include <FastLED.h>          //addressable RGB led control
 #include <ArduinoJson.h>      //json parser
 #include <LiquidCrystal_I2C.h>//4x20 lcd display
+#include <ArduinoOTA.h>       //Over the air updating
 #ifdef WIFIMODE               // wifi libraries
 #include <WiFi.h>
 #endif
@@ -19,6 +20,11 @@
 #include <ArduinoUniqueID.h>
 #endif
 
+#ifndef SCREEN_ROTATION
+#define SCREEN_ROTATION 3
+#endif
+
+#define STRINGIFY(x) #x
 //text lcd display dimensions
 #define LCD_COLS 20
 #define LCD_ROWS 4
@@ -116,7 +122,9 @@ byte macAddr[6] = {0, 0, 0, 0, 0, 0}; // Wired only? gets set later
 // device settings
 String Thing_ID = "";
 String Thing_Name = "";
+String AdminPW = "";
 int Unlock_Seconds = 5; // time staying unlocked
+int old_ota_prog = 1; //ATO update progress tracker
 
 typedef uint8_t RFID_token[7]; // value in an rfid tag
 
@@ -143,9 +151,13 @@ struct SM_ACCOUNT
 SM_ACCOUNT stored_accounts[STOREDACCOUNTSNUM];
 
 // function declarations - not all are listed here
-void printTitle(String);            // prints message at top of colour LCD in big font (1 line) (8 char max)
-void printHeadline(String);         // prints message just below top of colour lcd in medium font (1 line) (12 char max)
-void printBody(String);             // prints message in smallest text in a scrolling text format (10 lines) (20 char max)
+void printTitle(String);                  // prints message at top of colour LCD in big font (1 line) (8 char max)
+void printTitle_update(String, bool);     // prints message just below top of colour lcd in medium font (1 line) (12 char max) - bool for updating screen (off when multiple msgs to reduce lag)
+void printHeadline(String);               // prints message just below top of colour lcd in medium font (1 line) (12 char max)
+void printHeadline_update(String, bool); // prints message just below top of colour lcd in medium font (1 line) (12 char max) - bool for updating screen (off when multiple msgs to reduce lag)
+void printBody(String);                   // prints message in smallest text in a scrolling text format (10 lines) (20 char max)
+void printBody_update(String, bool);     // prints message in smallest text in a scrolling text format (10 lines) (20 char max) - bool for updating screen (off when multiple msgs to reduce lag
+void printBodyLong(String);
 void toggle_TFTlcd();               // turns colour LCD on/off
 void unlockDevice(String msg = "" ); // Unlocks the device with the message being sent to printTitle
 void lockDevice(String msg = "", uint16_t color = ILI9341_RED);   // locks the device with the message being sent to printTitle
@@ -160,6 +172,7 @@ void animate_leds();
 bool is_override_tag(RFID_TAG tag); //override code from separate file
 void getRFID_tag(RFID_TAG *item);
 void updateTextLcd();
+void setupOTA();
 
 #ifndef OVERRIDE_TOKENS
 bool is_override_tag(RFID_TAG tag){return 0;};
@@ -250,6 +263,52 @@ void thing_setup(bool TFT_lcd_init = true, bool TFT_lcd_backlight_on = true, boo
     lockDevice();
     printBody(Thing_Name);
     setupNetwork();
+    //setupOTA();
+}
+
+void setupOTA(){
+    String h_name = "ThingController-" + Thing_Name + rp2040.getChipID();//String(id_str, PICO_UNIQUE_BOARD_ID_SIZE_BYTES*2+1); 
+    ArduinoOTA.setHostname(h_name.c_str());
+    ArduinoOTA.setPassword(AdminPW.c_str());
+
+    ArduinoOTA.begin();
+
+    ArduinoOTA.onStart([]() {
+        String type;
+        if (ArduinoOTA.getCommand() == U_FLASH) {
+        type = "sketch";
+        } else {  // U_FS
+        type = "filesystem";
+        }
+
+        // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+        printBody("OTA Started " + type);
+    });
+
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        int progress_per = progress / (total / 100);
+        if (((progress_per % 10) == 0) && (progress_per != old_ota_prog)){
+            old_ota_prog = progress_per;
+            String prog = "Progress " + String(progress_per);
+            printBody(prog);
+            rp2040.wdt_reset(); //reset watchdog
+        }
+    });
+
+    ArduinoOTA.onError([](ota_error_t error) {
+        if (error == OTA_AUTH_ERROR) {
+        printBody("Auth Failed");
+        } else if (error == OTA_BEGIN_ERROR) {
+        printBody("Begin Failed");
+        } else if (error == OTA_CONNECT_ERROR) {
+        printBody("Connect Failed");
+        } else if (error == OTA_RECEIVE_ERROR) {
+        printBody("Receive Failed");
+        } else if (error == OTA_END_ERROR) {
+        printBody("End Failed");
+        }
+    });
+
 }
 
 int configNetwork()
@@ -355,7 +414,7 @@ int configDevice()
         printBody("Failed to open config file");
         return 1;
     }
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<384> doc;
     DeserializationError error = deserializeJson(doc, configFile);
     if (error)
     {
@@ -403,7 +462,13 @@ int configDevice()
         return 1;
     }
     thingPin = root["ThingPin"].as<int>();
-
+    // get output pin from json file
+    if (!root.containsKey("AdminPW"))
+    {
+        printBody("Error: No AdminPW in config file");
+        return 1;
+    }
+    AdminPW = root["AdminPW"].as<String>();
     // get output pin from json file
     if (!root.containsKey("ThingOnState"))
     {
@@ -436,7 +501,7 @@ void initialise_TFT_lcd(bool lcd_on)
 
     // setup LCD display
     TFT_lcd.begin();
-    TFT_lcd.setRotation(3);            // set screen to right way around
+    TFT_lcd.setRotation(SCREEN_ROTATION);            // set screen to right way around
     pinMode(TFTLCD_BACKLIGHT, OUTPUT); // backlight
     if (lcd_on)
         digitalWrite(TFTLCD_BACKLIGHT, HIGH); // turn backlight on
@@ -454,34 +519,42 @@ void initialise_TFT_lcd(bool lcd_on)
 // Serial: all msgs are sent the same
 // ILI9341: Title in largest font at top, headline in a smaller font, body in smallest
 // LCD 4x20: 1st row Title, 2nd row Headline, 3rd & 4th row Body
-
-void printTitle(String newMsg = "")
+void printTitle(String newMsg = ""){printTitle_update(newMsg,true);}
+void printTitle_update(String newMsg = "", bool update = true)
 {
     titleMsg = newMsg;
     if (serial_enabled)
         Serial.println(newMsg);
-    if (TFT_lcd_enabled)
-    {
-        updateTFTlcd();
-    }
-    if (text_lcd_enabled){
-        updateTextLcd();
+    if (update){
+      if (TFT_lcd_enabled)
+      {
+          updateTFTlcd();
+      }
+      if (text_lcd_enabled){
+          updateTextLcd();
+      }
     }
 }
-void printHeadline(String newMsg = "")
+void printHeadline(String newMsg = ""){printHeadline_update(newMsg,true);}
+
+void printHeadline_update(String newMsg = "", bool update = true)
 {
     headlineMsg = newMsg;
     if (serial_enabled)
         Serial.println(newMsg);
-    if (TFT_lcd_enabled)
-    {
-        updateTFTlcd();
-    }
-    if (text_lcd_enabled){
-        updateTextLcd();
+    if (update){
+      if (TFT_lcd_enabled)
+      {
+          updateTFTlcd();
+      }
+      if (text_lcd_enabled){
+          updateTextLcd();
+      }
     }
 }
-void printBody(String newMsg = "")
+void printBody(String newMsg = ""){printBody_update(newMsg,true);}
+
+void printBody_update(String newMsg = "", bool update = true)
 {
     // scroll all the text up one line
     for (int i = 1; i < LCD_NUM_LINES; i++)
@@ -491,19 +564,21 @@ void printBody(String newMsg = "")
     bodyMsg[LCD_NUM_LINES - 1] = newMsg;
     if (serial_enabled)
         Serial.println(newMsg);
-    if (TFT_lcd_enabled)
-    {
-        updateTFTlcd();
-    }
-    if (text_lcd_enabled){
-        updateTextLcd();
+    if (update){
+      if (TFT_lcd_enabled)
+      {
+          updateTFTlcd();
+      }
+      if (text_lcd_enabled){
+          updateTextLcd();
+      }
     }
 }
 void printBodyLong(String newMsg = "")
 {
     String msg = newMsg;
     while  (msg.length() > 20){ //if long msg then print over many lines
-        printBody(msg.substring(0,20));
+        printBody_update(msg.substring(0,20), false);
         msg = msg.substring(20);
     }
     printBody(msg);
@@ -610,43 +685,6 @@ String sendServerCustomMsg(String query = "", String msg ="", String token = "",
 void sendServerLogMsg(String msg = "", String token = "")
 {
     msg.replace(" ", "%20");
-
-    // #ifdef WIFIMODE
-    //   if (WiFi.status() != WL_CONNECTED) {
-    //     printBody("Error: WiFi Not Connected");
-    //     return;
-    //   }    
-    //   WiFiClient client;
-    // #endif
-    // #ifdef WIREDMODE
-    //   if (!(Ethernet.linkStatus() == LinkON)) {
-    //     printBody("ETHERNET NOT CONNECTED");
-    //     return;
-    //   }    
-    //   EthernetClient client;
-    // #endif
-
-    // if (!client.connect(Server_Host.c_str(), Server_Port)) {
-    //     printBody("Error: server connection failed");
-    //     return;
-    // }    
-    // String url = Server_URLPrefix;
-    // url += "msglog?thing=";
-    // url += Thing_ID.c_str();
-    // url += "&msg=";
-    // url += msg;
-    // if (token != "") //token input is optional
-    // {
-    //     url += "&token=";
-    //     url += token;
-    // }
-
-    // // This will send the request to the server
-    // client.print(String("GET ") + url + " HTTP/1.1\r\n" + "Host: " + Server_Host.c_str() + "\r\n" + "Connection: close\r\n\r\n");
-
-    // // don't care if it succeeds, so close connection and return
-    // client.flush();
-    // client.stop();
 
     sendServerCustomMsg("msglog", msg, token, "");
     return;        
@@ -1062,6 +1100,9 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
     if (root.containsKey("colour")){
       account->colour  = root["colour"].as<int>(); //value between 0-63
     } 
+    if (root.containsKey("message")){//Any message from the server that should be displayed
+      printBodyLong(root["message"]);
+    }
     if (root.containsKey("person")){
         if (sizeof(root["person"]["name"]) > 20)
             strncpy(account->Name, root["person"]["name"], 20); 

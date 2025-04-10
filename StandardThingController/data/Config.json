@@ -1,6 +1,7 @@
 {
   "Thing_Name": "TOOLNAME",
   "UUID": "PUTUUIDHERE",
+  "AdminPW" : "",
   "ThingControllerBoardRev" : 1,
   "UnlockSeconds" : 8,
   "ThingPin" : 7,
