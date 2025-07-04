@@ -1,6 +1,6 @@
 //SWINDON MAKERSPACE THING CONTROLLER
 // DOOR V0.1
-#define SOFTWARE_VER "1.1"
+#define SOFTWARE_VER "1.2"
 #define SOFTWARE_TYPE "Standard"
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
@@ -203,6 +203,16 @@ void loop() {
       }else{
         debug_btn_state = false;
       }
+      if(!digitalRead(ACTIVATE_BUTTON)){
+        Verbosity++;
+        if (Verbosity > VERB_MAX)
+          Verbosity = 0;
+        gotoSM_OTA_DEBUG(); //refresh screen
+        while(!digitalRead(ACTIVATE_BUTTON)) //wait until button is depressed
+          {delay(50);}
+        delay(50);
+      }
+
       delay(10);
       actionTimer = millis(); //dont clear the screen in this state
       break;//SM_OTA_DEBUG
@@ -322,6 +332,18 @@ void gotoSM_OTA_DEBUG(){
     else 
       printBody_update("Connected", false); 
   #endif
+  switch (Verbosity) {
+    case VERB_NORMAL: 
+      printBody_update("VERB = Normal", false);
+      break;
+    case VERB_HIGH: 
+      printBody_update("VERB = High", false);
+      break;
+    case VERB_HIGH_SERVER: 
+      printBody_update("VERB = High + Server", false);
+      break;  
+  }
+  
   printBody_update("SW = " +String(SOFTWARE_TYPE) + " V" + String(SOFTWARE_VER), true);
   setupOTA();  
   digitalWrite(INDUCT_LED, 1);
