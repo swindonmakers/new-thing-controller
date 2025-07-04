@@ -702,7 +702,7 @@ void sendServerInduction(String inductor_token = "", String inductee_token = "")
     custom += "&token_s=";       //token of student
     custom += inductee_token;
     String json = sendServerCustomMsg("induct", "", "", custom, 1);
-    printBodyLong(json);
+    //printBodyLong(json);
     if (json == "") return;
     DynamicJsonDocument jsonBuffer(200);
     deserializeJson(jsonBuffer,json);

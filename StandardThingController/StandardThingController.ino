@@ -190,6 +190,7 @@ void loop() {
       if (tag.valid == true){
         sendServerInduction(uid2String(account.tag.uid, account.tag.uid_length), uid2String(tag.uid, tag.uid_length));
         printBody("tag inducted");
+        actionTimer = millis();
       }
       break;//SM_THING_ACTIVE
 

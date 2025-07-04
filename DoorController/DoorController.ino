@@ -2,10 +2,10 @@
 // DOOR V0.1
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
-//#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
-#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE - BOARD SELECTION MUST BE Pi PICO or WIZnet W5500-EVB-Pico
+#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
+//#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE - BOARD SELECTION MUST BE Pi PICO or WIZnet W5500-EVB-Pico
 
-#define OVERRIDE_TOKENS
+//#define OVERRIDE_TOKENS
 
 #include "ThingContoller.h"
 #ifdef OVERRIDE_TOKENS
@@ -14,6 +14,8 @@
 //Door IO defines
 #define EXIT_BUTTON 13  //INPUT digital GPIO expansion connector pin
 #define DOOR_SENSOR 10  //INPUT digital GPIO expansion connector pin
+
+#define BUZZER 17 //Pin for buzzer output
 
 long actionTimer = 0; //time between actions to automate actions in statemachine
 long cacheTimer = 0;  //time counter between checking cache (hourly)
@@ -32,14 +34,18 @@ void gotoSM_IDLE();
 void gotoSM_UNLOCK();
 void gotoSM_RESPONSE();
 void gotoSM_REMAINS_OPEN();
+void alert_user();
 
 statemach thingState = SM_IDLE;
 int i=0;
 void setup() {
     pinMode(EXIT_BUTTON, INPUT_PULLUP);
     pinMode(DOOR_SENSOR, INPUT_PULLUP);
+    pinMode(BUZZER, OUTPUT);
     printHeadline("Booting Up");
-    populate_override_tags();//do before setup so tags can be used during setup
+    #ifdef OVERRIDE_TOKENS
+      populate_override_tags();//do before setup so tags can be used during setup
+    #endif 
     thing_setup();
     showLogo();
     delay(2000);
@@ -69,7 +75,7 @@ void loop(){
         #endif
             if (checkIfInStoredAccounts(&account))
             {
-                printBody("got from cache");
+                printBody_update("got from cache",false);
             }else{
                 //not in cache check server
                 getSMAccountFromServer(&account);
@@ -81,11 +87,34 @@ void loop(){
             if (account.flags & TOKEN_ACCESS)
             {
                 gotoSM_UNLOCK();
-                printHeadline("Valid Tag");
-                printBody("Welcome");
-                printBody(account.Name);
+                printHeadline_update("Valid Tag", false);
+                printBody_update("Welcome", false);
+                printBody_update(account.Name, true);
                 TFTLcd_setIconColour(ILI9341_GREEN);
                 sendServerLogMsg("Access Granted to :" + String(account.Name) , uid2String(account.tag.uid, account.tag.uid_length));
+                tone(BUZZER, 1000, 1000);
+                
+                //tell server to park car
+                String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
+                if (!(park_json == "")){
+                  DynamicJsonDocument jsonBuffer(200);
+                  deserializeJson(jsonBuffer,park_json);
+                  JsonObject root = jsonBuffer.as<JsonObject>();
+                  if (root.isNull()) {
+                    printBody("Server Error");
+                    printBody("Parking Failed");
+                    printBody("Reg car manually");
+                  }
+                  if (root.containsKey("message")) {
+                    printBodyLong(root["message"]);
+                  }
+                  if (root.containsKey("error")){
+                    printBodyLong(root["error"]);
+                    printBody("Reg car manually");
+                  }
+                  
+                }
+                
 
             }
             else
@@ -208,6 +237,12 @@ void gotoSM_REMAINS_OPEN(){
     if (headlineMsg != "Door is open"){//update display to say its open if it isnt right now
         printHeadline("Door is open");
     }
+}
+
+void alert_user(){
+  //some code here the makes buzzer go buzz
+  
+  
 }
 //todo 
 //update master tokens

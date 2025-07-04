@@ -358,7 +358,7 @@ int configDevice()
         printBody("Failed to open config file");
         return 1;
     }
-    StaticJsonDocument<256> doc;
+    StaticJsonDocument<512> doc;
     DeserializationError error = deserializeJson(doc, configFile);
     if (error)
     {

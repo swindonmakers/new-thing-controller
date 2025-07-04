@@ -32,3 +32,6 @@ DoorController/%appdata%/sketch/DoorController.ino.cpp
 DoorController/.vscode/arduino.json
 DoorController/.vscode/c_cpp_properties.json
 DoorController/.vscode/settings.json
+*.zip
+StandardThingController/.vscode/settings.json
+DoorController/ThingContoller_old.h

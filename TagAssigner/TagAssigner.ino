@@ -96,7 +96,7 @@ void loop() {
       if (tag.valid == true){
         account.tag = tag;
         getSMAccountFromServer(&account);
-        if (account.flags & TOKEN_INDUCTOR){
+        if (account.flags & TOKEN_ACCESS){
           delay(500);
           goto_tag_assign_code();
         }
