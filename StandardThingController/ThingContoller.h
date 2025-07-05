@@ -686,6 +686,11 @@ String sendServerCustomMsg(String query = "", String msg ="", String token = "",
             if (json.length() >= 500)
                 break; // way too much text
 
+            //slow down parsing its so fast that with many controllers it processes these results
+            // faster than the last one arrives so the controller thinks msg is finished
+            // but instead the next bit of the msg is still arriving
+            delay(50); 
+
         }
         //clean up and close connection 
         client.flush();
@@ -726,10 +731,14 @@ void sendServerInduction(String inductor_token = "", String inductee_token = "")
       printBody_update("Error: Couldn't ", false);
       printBody_update("parse JSON", false);
       printBody_update("is server down?", true);
-      if (Verbosity = VERB_HIGH)
+      if (Verbosity == VERB_HIGH){
         printBodyLong(json);
-      if (Verbosity = VERB_HIGH_SERVER)
-        sendServerLogMsg(Thing_Name + " DEBUG: " + json);
+        printBody("Json length:" + String(json.length()));
+      }
+      if (Verbosity == VERB_HIGH_SERVER){
+        printBodyLong(json);
+        sendServerLogMsg(Thing_Name + " DEBUG: " + json + " ENDOFJSON Length: " + String(json.length()));
+      }
       return;
     }
     String result = "";
@@ -1060,17 +1069,29 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
 
     //read json response
     String json;
+    String latest_data;
     int loop_counter = 0;
     bool endOfHeaders = false;
     while (client.available() && (loop_counter < 512) && !endOfHeaders)
     {
         loop_counter++;
-        json = client.readStringUntil('\n');
-        if (json == "")
+        latest_data = client.readStringUntil('\n');
+        if (latest_data == ""){
             endOfHeaders = true;
+        }else {
+          json = latest_data;
+        }
         if (json.length() >= 500)
             break; // way too much text
-
+        if (Verbosity >= VERB_HIGH){
+          printBodyLong(json);
+          printBody("Json length:" + String(json.length()));          
+        }
+        
+        //slow down parsing its so fast that with many controllers it processes these results
+        // faster than the last one arrives so the controller thinks msg is finished
+        // but instead the next bit of the msg is still arriving
+        delay(50); 
     }
     //clean up and close connection 
     client.flush();
@@ -1085,10 +1106,14 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
       printBody("Error: Couldn't ");
       printBody("parse JSON");
       printBody("is server down?");
-      if (Verbosity = VERB_HIGH)
+      if (Verbosity == VERB_HIGH){
         printBodyLong(json);
-      if (Verbosity = VERB_HIGH_SERVER)
-        sendServerLogMsg(Thing_Name + " DEBUG: " + json);
+        printBody("Json length:" + String(json.length()));
+      }
+      if (Verbosity == VERB_HIGH_SERVER){
+        printBodyLong(json);
+        sendServerLogMsg(Thing_Name + " DEBUG: " + json + " ENDOFJSON Length: " + String(json.length()));
+      }
 	  account->colour = PATTERN_REDWHITE;
       return;
     }

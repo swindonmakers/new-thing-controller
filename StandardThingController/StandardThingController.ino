@@ -65,6 +65,7 @@ void setup() {
   pinMode(SIGNOUT_LED, OUTPUT);
   pinMode(INDUCT_LED, OUTPUT);
   actionTimer = millis();
+  Verbosity = VERB_NORMAL;
 }
 
 void loop() {
@@ -310,11 +311,13 @@ void gotoSM_INDUCTING(){
 }
 
 void gotoSM_OTA_DEBUG(){
+  actionTimer = millis();
   thingState = SM_OTA_DEBUG;
   lockDevice("Tool Off",ILI9341_PINK);  
   for (int i = 0; i < LCD_NUM_LINES; i++)  {
       bodyMsg[i] = "";
   }
+
   printTitle_update("DEBUG", false);
   printHeadline_update("OTA ENABLED", false);
   printBody_update(Thing_Name, false); 
@@ -344,7 +347,11 @@ void gotoSM_OTA_DEBUG(){
       break;  
   }
   
-  printBody_update("SW = " +String(SOFTWARE_TYPE) + " V" + String(SOFTWARE_VER), true);
+  printBody_update("SW = " +String(SOFTWARE_TYPE) + " V" + String(SOFTWARE_VER), false);
+  for (int i =0; i < STOREDACCOUNTSNUM; i++)
+    {stored_accounts[i].store_counter = 0;} 
+  updateStoredAccounts();//clear cache
+  printBody_update("Cache Cleared", true);
   setupOTA();  
   digitalWrite(INDUCT_LED, 1);
 
