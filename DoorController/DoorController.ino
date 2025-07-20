@@ -1,5 +1,7 @@
 //SWINDON MAKERSPACE THING CONTROLLER
-// DOOR V0.1
+// DOOR V0.2
+
+#include "pitches.h"
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
 #define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
@@ -35,6 +37,38 @@ void gotoSM_UNLOCK();
 void gotoSM_RESPONSE();
 void gotoSM_REMAINS_OPEN();
 void alert_user();
+void play_alert();
+
+// notes in the melody:
+//int melody[] = {
+////    NOTE_E5, NOTE_D5, NOTE_FS4, NOTE_GS4, 
+////  NOTE_CS5, NOTE_B4, NOTE_D4, NOTE_E4, 
+////  NOTE_B4, NOTE_A4, NOTE_CS4, NOTE_E4,
+////  NOTE_A4
+//  NOTE_C5, NOTE_G4, NOTE_E4,
+//  NOTE_A4, NOTE_B4, NOTE_A4, NOTE_GS4, NOTE_AS4, NOTE_GS4,
+//  NOTE_G4, NOTE_D4, NOTE_E4
+//  };
+//
+//// note durations: 4 = quarter note, 8 = eighth note, etc.:
+//int noteDurations[] = {
+////    8, 8, 4, 4,
+////  8, 8, 4, 4,
+////  8, 8, 4, 4,
+////  2
+//  4, 4, 4,
+//  8, 8, 8, 8, 8, 8,
+//  8, 8, 2
+//};
+
+#define REST      0
+// so -4 means a dotted quarter note, that is, a quarter plus an eighteenth!!
+int melody[] = {
+  NOTE_E4,4, NOTE_B3,4, REST,2,
+  NOTE_E4,4, NOTE_B3,4 
+ 
+
+};
 
 statemach thingState = SM_IDLE;
 int i=0;
@@ -92,8 +126,7 @@ void loop(){
                 printBody_update(account.Name, true);
                 TFTLcd_setIconColour(ILI9341_GREEN);
                 sendServerLogMsg("Access Granted to :" + String(account.Name) , uid2String(account.tag.uid, account.tag.uid_length));
-                tone(BUZZER, 1000, 1000);
-                
+                play_alert();
                 //tell server to park car
                 String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
                 if (!(park_json == "")){
@@ -239,10 +272,55 @@ void gotoSM_REMAINS_OPEN(){
     }
 }
 
-void alert_user(){
+void play_alert(){
   //some code here the makes buzzer go buzz
-  
-  
+//  for (int thisNote = 0; thisNote < 12; thisNote++) {
+//
+//    // to calculate the note duration, take one second divided by the note type.
+//    //e.g. quarter note = 1000 / 4, eighth note = 1000/8, etc.
+//    int noteDuration = 1000 / noteDurations[thisNote];
+//    tone(BUZZER, melody[thisNote], noteDuration);
+//
+//    // to distinguish the notes, set a minimum time between them.
+//    // the note's duration + 30% seems to work well:
+//    int pauseBetweenNotes = noteDuration * 1.30;
+//    delay(pauseBetweenNotes);
+//    // stop the tone playing:
+//    noTone(BUZZER);
+// sizeof gives the number of bytes, each int value is composed of two bytes (16 bits)
+// there are two values per note (pitch and duration), so for each note there are four bytes
+int notes = sizeof(melody) / sizeof(melody[0]) / 2;
+int tempo = 140;
+
+// change this to whichever pin you want to use
+int buzzer = 11;
+// this calculates the duration of a whole note in ms
+int wholenote = (60000 * 2) / tempo;
+
+int divider = 0, noteDuration = 0;
+  for (int thisNote = 0; thisNote < notes * 2; thisNote = thisNote + 2) {
+    rp2040.wdt_reset(); //reset watchdog
+    // calculates the duration of each note
+    divider = melody[thisNote + 1];
+    if (divider > 0) {
+      // regular note, just proceed
+      noteDuration = (wholenote) / divider;
+    } else if (divider < 0) {
+      // dotted notes are represented with negative durations!!
+      noteDuration = (wholenote) / abs(divider);
+      noteDuration *= 1.5; // increases the duration in half for dotted notes
+    }
+
+    // we only play the note for 90% of the duration, leaving 10% as a pause
+    tone(BUZZER, melody[thisNote], noteDuration*0.9);
+
+    // Wait for the specief duration before playing the next note.
+    delay(noteDuration);
+    
+    // stop the waveform generation before the next note.
+    noTone(BUZZER);
+  }
+ 
 }
 //todo 
 //update master tokens
