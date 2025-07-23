@@ -65,6 +65,7 @@ void play_alert();
 // so -4 means a dotted quarter note, that is, a quarter plus an eighteenth!!
 int melody[] = {
   NOTE_E4,4, NOTE_B3,4, REST,2,
+  NOTE_E4,4, NOTE_B3,4, REST,2,
   NOTE_E4,4, NOTE_B3,4 
  
 
@@ -89,6 +90,7 @@ void setup() {
 
     gotoSM_IDLE();
     sendServerLogMsg(Thing_Name + " Booted Sucessfully!");
+//    Verbosity = VERB_HIGH;
 };
 
 void loop(){
@@ -126,29 +128,6 @@ void loop(){
                 printBody_update(account.Name, true);
                 TFTLcd_setIconColour(ILI9341_GREEN);
                 sendServerLogMsg("Access Granted to :" + String(account.Name) , uid2String(account.tag.uid, account.tag.uid_length));
-                play_alert();
-                //tell server to park car
-                String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
-                if (!(park_json == "")){
-                  DynamicJsonDocument jsonBuffer(200);
-                  deserializeJson(jsonBuffer,park_json);
-                  JsonObject root = jsonBuffer.as<JsonObject>();
-                  if (root.isNull()) {
-                    printBody("Server Error");
-                    printBody("Parking Failed");
-                    printBody("Reg car manually");
-                  }
-                  if (root.containsKey("message")) {
-                    printBodyLong(root["message"]);
-                  }
-                  if (root.containsKey("error")){
-                    printBodyLong(root["error"]);
-                    printBody("Reg car manually");
-                  }
-                  
-                }
-                
-
             }
             else
             {
@@ -160,6 +139,31 @@ void loop(){
                 } else{
                     sendServerLogMsg("Access Denied to :" + String(account.Name) ,uid2String(account.tag.uid, account.tag.uid_length));
                 }
+            }
+
+            //tell server to park car - no matter if they have access or not
+            String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
+            if (!(park_json == "")){
+              DynamicJsonDocument jsonBuffer(200);
+              deserializeJson(jsonBuffer,park_json);
+              JsonObject root = jsonBuffer.as<JsonObject>();
+              if (root.isNull()) {
+                printBody("Parking Error");
+                printBody("Msg Directors");
+              }
+              if (root.containsKey("message")) {
+                printBodyLong(root["message"]);
+              }
+              if (root.containsKey("notparked")) {
+                play_alert();
+                printBodyLong(root["notparked"]);
+              }              
+              if (root.containsKey("error")){
+                //play_alert();
+//                printBodyLong(root["error"]);
+                printBody("No cars registered");
+              }
+              
             }
         #ifdef OVERRIDE_TOKENS
         }
@@ -273,56 +277,36 @@ void gotoSM_REMAINS_OPEN(){
 }
 
 void play_alert(){
-  //some code here the makes buzzer go buzz
-//  for (int thisNote = 0; thisNote < 12; thisNote++) {
-//
-//    // to calculate the note duration, take one second divided by the note type.
-//    //e.g. quarter note = 1000 / 4, eighth note = 1000/8, etc.
-//    int noteDuration = 1000 / noteDurations[thisNote];
-//    tone(BUZZER, melody[thisNote], noteDuration);
-//
-//    // to distinguish the notes, set a minimum time between them.
-//    // the note's duration + 30% seems to work well:
-//    int pauseBetweenNotes = noteDuration * 1.30;
-//    delay(pauseBetweenNotes);
-//    // stop the tone playing:
-//    noTone(BUZZER);
-// sizeof gives the number of bytes, each int value is composed of two bytes (16 bits)
-// there are two values per note (pitch and duration), so for each note there are four bytes
-int notes = sizeof(melody) / sizeof(melody[0]) / 2;
-int tempo = 140;
-
-// change this to whichever pin you want to use
-int buzzer = 11;
-// this calculates the duration of a whole note in ms
-int wholenote = (60000 * 2) / tempo;
-
-int divider = 0, noteDuration = 0;
-  for (int thisNote = 0; thisNote < notes * 2; thisNote = thisNote + 2) {
-    rp2040.wdt_reset(); //reset watchdog
-    // calculates the duration of each note
-    divider = melody[thisNote + 1];
-    if (divider > 0) {
-      // regular note, just proceed
-      noteDuration = (wholenote) / divider;
-    } else if (divider < 0) {
-      // dotted notes are represented with negative durations!!
-      noteDuration = (wholenote) / abs(divider);
-      noteDuration *= 1.5; // increases the duration in half for dotted notes
+  int notes = sizeof(melody) / sizeof(melody[0]) / 2;
+  int tempo = 140;
+  
+  // change this to whichever pin you want to use
+  int buzzer = 11;
+  // this calculates the duration of a whole note in ms
+  int wholenote = (60000 * 2) / tempo;
+  
+  int divider = 0, noteDuration = 0;
+    for (int thisNote = 0; thisNote < notes * 2; thisNote = thisNote + 2) {
+      rp2040.wdt_reset(); //reset watchdog
+      // calculates the duration of each note
+      divider = melody[thisNote + 1];
+      if (divider > 0) {
+        // regular note, just proceed
+        noteDuration = (wholenote) / divider;
+      } else if (divider < 0) {
+        // dotted notes are represented with negative durations!!
+        noteDuration = (wholenote) / abs(divider);
+        noteDuration *= 1.5; // increases the duration in half for dotted notes
+      }
+  
+      // we only play the note for 90% of the duration, leaving 10% as a pause
+      tone(BUZZER, melody[thisNote], noteDuration*0.9);
+  
+      // Wait for the specief duration before playing the next note.
+      delay(noteDuration);
+      
+      // stop the waveform generation before the next note.
+      noTone(BUZZER);
     }
-
-    // we only play the note for 90% of the duration, leaving 10% as a pause
-    tone(BUZZER, melody[thisNote], noteDuration*0.9);
-
-    // Wait for the specief duration before playing the next note.
-    delay(noteDuration);
-    
-    // stop the waveform generation before the next note.
-    noTone(BUZZER);
-  }
- 
+   
 }
-//todo 
-//update master tokens
-//allow override tag to work during wifi boot
-//4x20 lcd stuff

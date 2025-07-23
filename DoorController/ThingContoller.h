@@ -150,6 +150,13 @@ struct SM_ACCOUNT
 #define STOREDACCOUNTSNUM 64
 SM_ACCOUNT stored_accounts[STOREDACCOUNTSNUM];
 
+#define  VERB_NORMAL        0  //Standard amound of messages appear
+#define  VERB_HIGH          1  //Display alot more info on the screen for debug
+#define  VERB_HIGH_SERVER   2  //Display alot more info on the screen for debug and send more logs to server
+#define  VERB_MAX           2  //Highest value verbosity listed
+
+int Verbosity = VERB_NORMAL;
+
 // function declarations - not all are listed here
 void printTitle(String);                  // prints message at top of colour LCD in big font (1 line) (8 char max)
 void printTitle_update(String, bool);     // prints message just below top of colour lcd in medium font (1 line) (12 char max) - bool for updating screen (off when multiple msgs to reduce lag)
@@ -576,10 +583,16 @@ void printBody_update(String newMsg = "", bool update = true)
 }
 void printBodyLong(String newMsg = "")
 {
+    int line_count = 0;
     String msg = newMsg;
     while  (msg.length() > 20){ //if long msg then print over many lines
-        printBody_update(msg.substring(0,20), false);
+        printBody_update(msg.substring(0,20), true);
         msg = msg.substring(20);
+        line_count++;
+        rp2040.wdt_reset(); //reset watchdog
+        if (line_count > 8) { //slow down text scrolling to be able to read whats going on
+          delay(100);
+        }
     }
     printBody(msg);
 }
@@ -599,7 +612,7 @@ void updateTextLcd(){
     Textlcd.print(bodyMsg[LCD_NUM_LINES-1]);
 }
 
-String sendServerCustomMsg(String query = "", String msg ="", String token = "", String custom = "", bool response = false){ //custom msg to server such as induct?XXX or tool_access?XXX
+String sendServerCustomMsg(String query = "", String msg ="", String token = "", String custom = "", bool response = 0){ //custom msg to server such as induct?XXX or tool_access?XXX
     msg.replace(" ", "%20");
     query.replace(" ", "%20");
     custom.replace(" ", "%20");
@@ -661,7 +674,7 @@ String sendServerCustomMsg(String query = "", String msg ="", String token = "",
         }
 
         //read json response
-        String json = "";
+        String json;
         int loop_counter = 0;
         bool endOfHeaders = false;
         while (client.available() && (loop_counter < 512) && !endOfHeaders)
@@ -672,6 +685,11 @@ String sendServerCustomMsg(String query = "", String msg ="", String token = "",
                 endOfHeaders = true;
             if (json.length() >= 500)
                 break; // way too much text
+
+            //slow down parsing its so fast that with many controllers it processes these results
+            // faster than the last one arrives so the controller thinks msg is finished
+            // but instead the next bit of the msg is still arriving
+            delay(50); 
 
         }
         //clean up and close connection 
@@ -704,16 +722,23 @@ void sendServerInduction(String inductor_token = "", String inductee_token = "")
     String json = sendServerCustomMsg("induct", "", "", custom, 1);
     //printBodyLong(json);
     if (json == "") return;
-    DynamicJsonDocument jsonBuffer(200);
+    DynamicJsonDocument jsonBuffer(384);
     deserializeJson(jsonBuffer,json);
     JsonObject root = jsonBuffer.as<JsonObject>();
 
 
     if (root.isNull()) {
-      printBody("Error: Couldn't ");
-      printBody("parse JSON");
-      printBody("is server down?");
-      printBodyLong(json);
+      printBody_update("Error: Couldn't ", false);
+      printBody_update("parse JSON", false);
+      printBody_update("is server down?", true);
+      if (Verbosity == VERB_HIGH){
+        printBodyLong(json);
+        printBody("Json length:" + String(json.length()));
+      }
+      if (Verbosity == VERB_HIGH_SERVER){
+        printBodyLong(json);
+        sendServerLogMsg(Thing_Name + " DEBUG: " + json + " ENDOFJSON Length: " + String(json.length()));
+      }
       return;
     }
     String result = "";
@@ -1044,24 +1069,36 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
 
     //read json response
     String json;
+    String latest_data;
     int loop_counter = 0;
     bool endOfHeaders = false;
     while (client.available() && (loop_counter < 512) && !endOfHeaders)
     {
         loop_counter++;
-        json = client.readStringUntil('\n');
-        if (json == "")
+        latest_data = client.readStringUntil('\n');
+        if (latest_data == ""){
             endOfHeaders = true;
+        }else {
+          json = latest_data;
+        }
         if (json.length() >= 500)
             break; // way too much text
-
+        if (Verbosity >= VERB_HIGH){
+          printBodyLong(json);
+          printBody("Json length:" + String(json.length()));          
+        }
+        
+        //slow down parsing its so fast that with many controllers it processes these results
+        // faster than the last one arrives so the controller thinks msg is finished
+        // but instead the next bit of the msg is still arriving
+        delay(50); 
     }
     //clean up and close connection 
     client.flush();
     client.stop(); 
 
     //convert to json
-    DynamicJsonDocument jsonBuffer(200);
+    DynamicJsonDocument jsonBuffer(384);
     deserializeJson(jsonBuffer,json);
     JsonObject root = jsonBuffer.as<JsonObject>();
     account->colour = PATTERN_REDWHITE;//default error colour for network
@@ -1069,7 +1106,14 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
       printBody("Error: Couldn't ");
       printBody("parse JSON");
       printBody("is server down?");
-      printBodyLong(json);
+      if (Verbosity == VERB_HIGH){
+        printBodyLong(json);
+        printBody("Json length:" + String(json.length()));
+      }
+      if (Verbosity == VERB_HIGH_SERVER){
+        printBodyLong(json);
+        sendServerLogMsg(Thing_Name + " DEBUG: " + json + " ENDOFJSON Length: " + String(json.length()));
+      }
 	  account->colour = PATTERN_REDWHITE;
       return;
     }
