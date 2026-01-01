@@ -4,10 +4,10 @@
 #include "pitches.h"
 
 //DEFINE IF IN WIRED OR WIFI MODE (ONLY 1 define at a time!!!)
-#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
-//#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE - BOARD SELECTION MUST BE Pi PICO or WIZnet W5500-EVB-Pico
+//#define WIFIMODE  //UNCOMMENT TO ENABLE WIFI MODE - BOARD SELECTION MUST BE Pi PICO W
+#define WIREDMODE   //UNCOMMENT TO ENABLE WIRED MODE - BOARD SELECTION MUST BE Pi PICO or WIZnet W5500-EVB-Pico
 
-//#define OVERRIDE_TOKENS
+#define OVERRIDE_TOKENS
 
 #include "ThingContoller.h"
 #ifdef OVERRIDE_TOKENS
@@ -17,7 +17,6 @@
 #define EXIT_BUTTON 13  //INPUT digital GPIO expansion connector pin
 #define DOOR_SENSOR 10  //INPUT digital GPIO expansion connector pin
 
-#define BUZZER 17 //Pin for buzzer output
 
 long actionTimer = 0; //time between actions to automate actions in statemachine
 long cacheTimer = 0;  //time counter between checking cache (hourly)
@@ -39,28 +38,6 @@ void gotoSM_REMAINS_OPEN();
 void alert_user();
 void play_alert();
 
-// notes in the melody:
-//int melody[] = {
-////    NOTE_E5, NOTE_D5, NOTE_FS4, NOTE_GS4, 
-////  NOTE_CS5, NOTE_B4, NOTE_D4, NOTE_E4, 
-////  NOTE_B4, NOTE_A4, NOTE_CS4, NOTE_E4,
-////  NOTE_A4
-//  NOTE_C5, NOTE_G4, NOTE_E4,
-//  NOTE_A4, NOTE_B4, NOTE_A4, NOTE_GS4, NOTE_AS4, NOTE_GS4,
-//  NOTE_G4, NOTE_D4, NOTE_E4
-//  };
-//
-//// note durations: 4 = quarter note, 8 = eighth note, etc.:
-//int noteDurations[] = {
-////    8, 8, 4, 4,
-////  8, 8, 4, 4,
-////  8, 8, 4, 4,
-////  2
-//  4, 4, 4,
-//  8, 8, 8, 8, 8, 8,
-//  8, 8, 2
-//};
-
 #define REST      0
 // so -4 means a dotted quarter note, that is, a quarter plus an eighteenth!!
 int melody[] = {
@@ -68,7 +45,6 @@ int melody[] = {
   NOTE_E4,4, NOTE_B3,4, REST,2,
   NOTE_E4,4, NOTE_B3,4 
  
-
 };
 
 statemach thingState = SM_IDLE;
@@ -83,7 +59,7 @@ void setup() {
     #endif 
     thing_setup();
     showLogo();
-    delay(2000);
+    delay(1000);
     printHeadline("Booted up");
     rp2040.wdt_begin(8000);
     
@@ -140,31 +116,34 @@ void loop(){
                     sendServerLogMsg("Access Denied to :" + String(account.Name) ,uid2String(account.tag.uid, account.tag.uid_length));
                 }
             }
-
-            //tell server to park car - no matter if they have access or not
-            String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
-            if (!(park_json == "")){
-              DynamicJsonDocument jsonBuffer(200);
-              deserializeJson(jsonBuffer,park_json);
-              JsonObject root = jsonBuffer.as<JsonObject>();
-              if (root.isNull()) {
-                printBody("Parking Error");
-                printBody("Msg Directors");
-              }
-              if (root.containsKey("message")) {
-                printBodyLong(root["message"]);
-              }
-              if (root.containsKey("notparked")) {
-                play_alert();
-                printBodyLong(root["notparked"]);
-              }              
-              if (root.containsKey("error")){
-                //play_alert();
-//                printBodyLong(root["error"]);
-                printBody("No cars registered");
-              }
-              
+            if (account.flags & TOKEN_BEEP){
+              play_alert();
             }
+            animate_leds(); //force led update immidiately so that it changes colour before waiting on parking cars
+            //tell server to park car - no matter if they have access or not
+//             String park_json = sendServerCustomMsg("park", "", uid2String(tag.uid, tag.uid_length), "", true);
+//             if (!(park_json == "")){
+//               DynamicJsonDocument jsonBuffer(200);
+//               deserializeJson(jsonBuffer,park_json);
+//               JsonObject root = jsonBuffer.as<JsonObject>();
+//               if (root.isNull()) {
+//                 printBody("Parking Error");
+//                 printBody("Msg Directors");
+//               }
+//               if (root.containsKey("message")) {
+//                 printBodyLong(root["message"]);
+//               }
+//               if (root.containsKey("notparked")) {
+//                 play_alert();
+//                 printBodyLong(root["notparked"]);
+//               }              
+//               if (root.containsKey("error")){
+//                 //play_alert();
+// //                printBodyLong(root["error"]);
+//                 printBody("No cars registered");
+//               }
+              
+//             }
         #ifdef OVERRIDE_TOKENS
         }
         #endif

@@ -11,13 +11,13 @@
 #include <FastLED.h>          //addressable RGB led control
 #include <ArduinoJson.h>      //json parser
 #include <LiquidCrystal_I2C.h>//4x20 lcd display
-#include <ArduinoOTA.h>       //Over the air updating
+// #include <ArduinoOTA.h>       //Over the air updating
 #ifdef WIFIMODE               // wifi libraries
-#include <WiFi.h>
+  #include <WiFi.h>
 #endif
 #ifdef WIREDMODE // wired libraries
-#include <Ethernet_Generic.h>
-#include <ArduinoUniqueID.h>
+  #include <Ethernet_Generic.h>
+  #include <ArduinoUniqueID.h>
 #endif
 
 #ifndef SCREEN_ROTATION
@@ -79,6 +79,7 @@ int colourPattern = 0; // led state
 #define TOKEN_INDUCTOR 0x04  //bit2 in flags
 #define TOKEN_DIRECTOR 0x08  //bit3 in flags (not yet used)
 #define TOKEN_READ 0x10      //bit4 in flags (card seen but no access)
+#define TOKEN_BEEP 0x20      //bit5 in flags (door should beep)
 
 // setup devices
 Adafruit_ILI9341 TFT_lcd = Adafruit_ILI9341(&SPI, TFTLCD_DC, TFTLCD_CS, TFTLCD_RST); // Colour LCD
@@ -89,7 +90,8 @@ bool serial_enabled = false;   // if this thing should output information on the
 bool text_lcd_enabled = false; // if this thing has a 4x20 LCD text display
 
 // output pin signal of the thing that is being contolled
-int thingPin = 7;              // output pin of the thing being controller (default 7)
+int thingPin = 8;              // output pin of the thing being controller (default 7)
+#define BUZZER 7               //Pin for buzzer output
 PinStatus thingOnState = HIGH; // default output value to enable the machine
 
 // symbols to show on the 4x20 LCD
@@ -274,47 +276,47 @@ void thing_setup(bool TFT_lcd_init = true, bool TFT_lcd_backlight_on = true, boo
 }
 
 void setupOTA(){
-    String h_name = "ThingController-" + Thing_Name + rp2040.getChipID();//String(id_str, PICO_UNIQUE_BOARD_ID_SIZE_BYTES*2+1); 
-    ArduinoOTA.setHostname(h_name.c_str());
-    ArduinoOTA.setPassword(AdminPW.c_str());
+    // String h_name = "ThingController-" + Thing_Name + rp2040.getChipID();//String(id_str, PICO_UNIQUE_BOARD_ID_SIZE_BYTES*2+1); 
+    // ArduinoOTA.setHostname(h_name.c_str());
+    // ArduinoOTA.setPassword(AdminPW.c_str());
 
-    ArduinoOTA.begin();
+    // ArduinoOTA.begin();
 
-    ArduinoOTA.onStart([]() {
-        String type;
-        if (ArduinoOTA.getCommand() == U_FLASH) {
-        type = "sketch";
-        } else {  // U_FS
-        type = "filesystem";
-        }
+    // ArduinoOTA.onStart([]() {
+    //     String type;
+    //     if (ArduinoOTA.getCommand() == U_FLASH) {
+    //     type = "sketch";
+    //     } else {  // U_FS
+    //     type = "filesystem";
+    //     }
 
-        // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-        printBody("OTA Started " + type);
-    });
+    //     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    //     printBody("OTA Started " + type);
+    // });
 
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        int progress_per = progress / (total / 100);
-        if (((progress_per % 10) == 0) && (progress_per != old_ota_prog)){
-            old_ota_prog = progress_per;
-            String prog = "Progress " + String(progress_per);
-            printBody(prog);
-            rp2040.wdt_reset(); //reset watchdog
-        }
-    });
+    // ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    //     int progress_per = progress / (total / 100);
+    //     if (((progress_per % 10) == 0) && (progress_per != old_ota_prog)){
+    //         old_ota_prog = progress_per;
+    //         String prog = "Progress " + String(progress_per);
+    //         printBody(prog);
+    //         rp2040.wdt_reset(); //reset watchdog
+    //     }
+    // });
 
-    ArduinoOTA.onError([](ota_error_t error) {
-        if (error == OTA_AUTH_ERROR) {
-        printBody("Auth Failed");
-        } else if (error == OTA_BEGIN_ERROR) {
-        printBody("Begin Failed");
-        } else if (error == OTA_CONNECT_ERROR) {
-        printBody("Connect Failed");
-        } else if (error == OTA_RECEIVE_ERROR) {
-        printBody("Receive Failed");
-        } else if (error == OTA_END_ERROR) {
-        printBody("End Failed");
-        }
-    });
+    // ArduinoOTA.onError([](ota_error_t error) {
+    //     if (error == OTA_AUTH_ERROR) {
+    //     printBody("Auth Failed");
+    //     } else if (error == OTA_BEGIN_ERROR) {
+    //     printBody("Begin Failed");
+    //     } else if (error == OTA_CONNECT_ERROR) {
+    //     printBody("Connect Failed");
+    //     } else if (error == OTA_RECEIVE_ERROR) {
+    //     printBody("Receive Failed");
+    //     } else if (error == OTA_END_ERROR) {
+    //     printBody("End Failed");
+    //     }
+    // });
 
 }
 
@@ -1161,6 +1163,11 @@ void getSMAccountFromServer(SM_ACCOUNT *account)
         }
         printBodyLong(root["error"]);
     }   
+    if (root.containsKey("beep")){
+      if( root["beep"] == 1) {
+        account->flags |= TOKEN_BEEP;
+      }
+    }
     return;
 }
 
