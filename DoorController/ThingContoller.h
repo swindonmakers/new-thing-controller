@@ -1339,6 +1339,7 @@ void addToStoredAccounts(SM_ACCOUNT new_account){
             memcpy(stored_accounts[i].Name, new_account.Name, 20);
             memcpy(stored_accounts[i].tag.uid, new_account.tag.uid ,14);
             stored_accounts[i].flags = new_account.flags;
+            stored_accounts[i].flags ^= TOKEN_BEEP; //Dont store beep (it will get annoying)
             stored_accounts[i].store_counter = STORAGE_TIME;
             stored_accounts[i].colour = new_account.colour; 
             //printBody("stored at loc: "+ String(i));

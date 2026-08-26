@@ -1,0 +1,10 @@
+{
+  "Thing_Name": "TagAssigner",
+  "UUID": "45D689AE-4765-11EE-A95D-58A3411BA656",
+  "ThingControllerBoardRev" : 1,
+  "UnlockSeconds" : 8,
+  "ThingPin" : 7,
+  "ThingOnState" : 1,
+  "NumRGBleds" : 24,
+  "AdminPW" : "ThingAdmin"
+}
