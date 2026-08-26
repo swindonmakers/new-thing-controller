@@ -1,8 +1,8 @@
 {
-  "NETWORK_SSID": "ThingControllerWifi",
-  "NETWORK_PASSWORD": "ControlTheThings",
-  "SERVER_HOST": "192.168.1.70",
-  "SERVER_PORT": 3000,
+  "NETWORK_SSID": "",
+  "NETWORK_PASSWORD": "",
+  "SERVER_HOST": "",
+  "SERVER_PORT": 1,
   "SERVER_URLPREFIX": "/",
   "DeviceAddress": "192.168.1.200"
 }
